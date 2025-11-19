@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATLAS - NYC Subway Delay Prediction</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚇 ATLAS</h1>
+            <p class="subtitle">Advanced Transit Latency Analysis System</p>
+            <p class="route-info">L Train - Real-time Delay Predictions</p>
+        </header>
+
+        <main>
+            <!-- Status Display -->
+            <section class="status-section">
+                <h2>Current Status</h2>
+                <div id="status-display">
+                    <p class="loading">Loading predictions...</p>
+                </div>
+            </section>
+
+            <!-- Station Predictions -->
+            <section class="predictions-section">
+                <h2>Station Predictions</h2>
+                <div id="predictions-container">
+                    <!-- Predictions will be dynamically inserted here -->
+                    <p class="placeholder">Select "Get Predictions" to see current delay forecasts</p>
+                </div>
+            </section>
+
+            <!-- Controls -->
+            <section class="controls-section">
+                <button id="refresh-btn" class="btn-primary">Get Predictions</button>
+                <button id="auto-refresh-btn" class="btn-secondary">Auto-Refresh: OFF</button>
+            </section>
+        </main>
+
+        <footer>
+            <p>Data from MTA GTFS-realtime API | Weather from OpenWeatherMap</p>
+            <p>Predictions powered by Random Forest & XGBoost ML models</p>
+            <p class="author">Built by Michael Solorio</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
