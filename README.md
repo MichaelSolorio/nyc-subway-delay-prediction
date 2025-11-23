@@ -1,98 +1,107 @@
-# 🚇 ATLAS - Advanced Transit Latency Analysis System
+# ATLAS - Advanced Transit Latency Analysis System
 
-A machine learning-powered web application designed to predict delays in the New York City subway system with real-time accuracy.
+A machine learning project that predicts delays on the NYC subway system using real-time data.
 
-## 📋 Project Overview
+## What is this?
 
-ATLAS leverages publicly available MTA GTFS-realtime data, weather APIs, and historical transit patterns to predict whether trains will arrive on-time or experience delays, along with estimated delay severity.
+ATLAS is a data science project I built to predict whether L trains in NYC will be delayed. It pulls live data from the MTA's public API, combines it with weather data, and uses machine learning to make predictions.
 
-**Current Focus:** L train route
+The goal was to learn how to build a full ML pipeline from scratch - from data collection all the way to a working web app.
 
-## 🎯 Features
+## How it works
 
-- Real-time delay prediction using MTA GTFS data
-- Weather-aware predictions
-- Historical pattern analysis
-- REST API for predictions
-- Interactive web interface
-- Focus on L train route (expandable to other routes)
+1. **Data Collection** - Fetches real-time L train data from MTA's GTFS feed and current weather from OpenWeatherMap
+2. **Feature Engineering** - Transforms raw data into useful features (time of day, rush hour, weather conditions, etc.)
+3. **Model Training** - Uses Random Forest and XGBoost to learn patterns in delay data
+4. **Prediction API** - Flask REST API serves predictions to a simple web frontend
 
-## 🛠️ Technology Stack
+## Tech Stack
 
-- **Backend:** Python, Flask
-- **Machine Learning:** Random Forest, XGBoost (scikit-learn)
-- **Data Sources:** MTA GTFS-realtime API, Weather API
-- **Database:** PostgreSQL
-- **Deployment:** Docker
+- Python (Flask, pandas, scikit-learn, XGBoost)
+- MTA GTFS-realtime API
+- OpenWeatherMap API
+- HTML/CSS/JavaScript frontend
+- Docker for deployment (planned)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-├── data/                   # Data storage (git-ignored)
-│   ├── raw/               # Raw downloaded data
-│   ├── processed/         # Cleaned/processed data
+├── data/                   # Data storage (not tracked in git)
+│   ├── raw/               # Raw JSON from APIs
+│   ├── processed/         # Cleaned CSV files
 │   └── models/            # Saved ML models
-├── src/                   # Source code
-│   ├── data_collection/   # MTA & weather data fetching
-│   ├── data_processing/   # Feature engineering & cleaning
-│   ├── models/            # ML model training & prediction
+├── src/
+│   ├── data_collection/   # Scripts to fetch MTA and weather data
+│   ├── data_processing/   # Feature engineering pipeline
+│   ├── models/            # Model training and prediction
 │   └── api/               # Flask REST API
-├── static/                # Frontend (HTML/CSS/JS)
-├── notebooks/             # Jupyter notebooks for exploration
-└── docker/                # Docker configuration
+├── static/                # Frontend files
+└── config.py              # Configuration and API keys
 ```
 
-## 🚀 Getting Started
+## Setup
 
-### Prerequisites
-- Python 3.11+
-- pip
-- PostgreSQL (optional for now)
-
-### Installation
-
-1. Clone the repository
+1. Clone the repo
 2. Create a virtual environment:
-   ```bash
+   ```
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   venv\Scripts\activate  # Windows
    ```
 3. Install dependencies:
-   ```bash
+   ```
    pip install -r requirements.txt
    ```
-4. Set up environment variables (create `.env` file):
+4. Create a `.env` file with your API keys:
    ```
-   MTA_API_KEY=your_mta_api_key
-   WEATHER_API_KEY=your_weather_api_key
+   WEATHER_API_KEY=your_key_here
    ```
+   Note: MTA data doesn't require an API key anymore.
 
-## 📊 Development Roadmap
+## Running the project
 
-- [ ] Phase 1: Data Collection Setup
-  - [ ] MTA GTFS-realtime data fetching
-  - [ ] Weather API integration
-- [ ] Phase 2: Data Processing
-  - [ ] Feature engineering
-  - [ ] Data cleaning pipeline
-- [ ] Phase 3: Model Development
-  - [ ] Train Random Forest model
-  - [ ] Train XGBoost model
-  - [ ] Model evaluation
-- [ ] Phase 4: API Development
-  - [ ] Flask REST API
-  - [ ] Prediction endpoints
-- [ ] Phase 5: Frontend
-  - [ ] Web interface
-  - [ ] Real-time predictions display
-- [ ] Phase 6: Deployment
-  - [ ] Docker containerization
-  - [ ] PostgreSQL integration
+Collect data:
+```
+venv\Scripts\python src/data_collection/mta_gtfs.py
+venv\Scripts\python src/data_collection/weather_api.py
+```
 
-## 👨‍💻 Author
+Process data:
+```
+venv\Scripts\python src/data_processing/feature_engineering.py
+```
+
+Train models (coming soon):
+```
+venv\Scripts\python src/models/train.py
+```
+
+Start the API:
+```
+venv\Scripts\python src/api/app.py
+```
+
+## Current Progress
+
+- [x] MTA GTFS data collection
+- [x] Weather API integration
+- [x] Feature engineering pipeline
+- [ ] Model training
+- [ ] Prediction API
+- [ ] Web frontend
+- [ ] Docker deployment
+
+## What I learned
+
+- Working with real-time transit data (GTFS protocol buffers)
+- API integration and handling authentication
+- Feature engineering for time-series data
+- Building ML pipelines from scratch
+- Project organization and version control
+
+## Author
 
 Michael Solorio
 
-## 📝 License
+---
 
-This project is for educational and portfolio purposes.
+Built as a portfolio project to demonstrate applied data science and ML engineering skills.
