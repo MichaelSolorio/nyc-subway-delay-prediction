@@ -16,15 +16,35 @@ class Config:
 
     # MTA API Configuration
     MTA_API_KEY = os.getenv('MTA_API_KEY', '')
-    MTA_GTFS_FEED_URL = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l'
 
-    # Weather API Configuration (using OpenWeatherMap as example)
+    # Multiple route feeds (L, 6, A trains)
+    MTA_FEEDS = {
+        'L': {
+            'feed_url': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l',
+            'route_id': 'L',
+            'name': 'L Train',
+            'latitude': 40.7128,   # Brooklyn/Manhattan
+            'longitude': -74.0060
+        },
+        '6': {
+            'feed_url': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
+            'route_id': '6',
+            'name': '6 Train',
+            'latitude': 40.7489,   # Manhattan/Bronx (Upper East Side)
+            'longitude': -73.9680
+        },
+        'A': {
+            'feed_url': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
+            'route_id': 'A',
+            'name': 'A Train',
+            'latitude': 40.7614,   # Manhattan/Brooklyn/Queens (Columbus Circle)
+            'longitude': -73.9776
+        }
+    }
+
+    # Weather API Configuration (using OpenWeatherMap)
     WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '')
     WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather'
-
-    # NYC Coordinates (for weather data)
-    NYC_LATITUDE = 40.7128
-    NYC_LONGITUDE = -74.0060
 
     # Database Configuration (PostgreSQL)
     DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost/atlas_db')
@@ -38,8 +58,8 @@ class Config:
     RAW_DATA_PATH = 'data/raw/'
     PROCESSED_DATA_PATH = 'data/processed/'
 
-    # L Train Route ID (from GTFS data)
-    L_TRAIN_ROUTE_ID = 'L'
+    # Supported Routes
+    SUPPORTED_ROUTES = ['L', '6', 'A']
 
     # Feature Engineering Settings
     DELAY_THRESHOLD_MINUTES = 5  # Classify as delay if >5 minutes late

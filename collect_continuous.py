@@ -1,6 +1,6 @@
 """
 Continuous Data Collection
-Automatically collects MTA and weather data at regular intervals
+Automatically collects MTA and weather data for L, 6, and A trains at regular intervals
 
 HOW TO USE:
 1. Run this script: venv\Scripts\python collect_continuous.py
@@ -8,6 +8,7 @@ HOW TO USE:
 3. Press Ctrl+C to stop
 
 It will collect data every 10 minutes and save to data/raw/
+Collects subway data and weather for all 3 routes: L, 6, and A trains
 The more varied data you collect (different times, days, weather),
 the better your ML model will be!
 """
@@ -40,7 +41,8 @@ def run_collection_cycle():
     try:
         mta_result = collect_mta()
         if mta_result:
-            print(f"\n[MTA] Collected {mta_result.get('delays', 0)} delay records")
+            total_delays = sum(route['delays'] for route in mta_result.values())
+            print(f"\n[MTA] Collected {total_delays} total delay records across all routes")
     except Exception as e:
         print(f"[ERROR] MTA collection failed: {e}")
 
@@ -50,7 +52,10 @@ def run_collection_cycle():
     try:
         weather_result = collect_weather()
         if weather_result:
-            print(f"\n[WEATHER] Temperature: {weather_result.get('temperature', 'N/A')}F")
+            # Show average temperature across all routes
+            temps = [route['temperature'] for route in weather_result.values()]
+            avg_temp = sum(temps) / len(temps)
+            print(f"\n[WEATHER] Average temperature: {avg_temp:.1f}F")
     except Exception as e:
         print(f"[ERROR] Weather collection failed: {e}")
 
@@ -62,10 +67,11 @@ def main():
     """Main loop - continuously collect data"""
     print()
     print("=" * 60)
-    print("ATLAS - Continuous Data Collection")
+    print("ATLAS - Continuous Data Collection (L, 6, A Trains)")
     print("=" * 60)
     print()
     print(f"Collecting data every {COLLECTION_INTERVAL // 60} minutes")
+    print("Routes: L Train, 6 Train, A Train")
     print("Press Ctrl+C to stop")
     print()
     print("-" * 60)

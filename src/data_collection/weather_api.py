@@ -1,6 +1,6 @@
 """
 Weather Data Collection
-Fetches current weather data for NYC to correlate with subway delays
+Fetches current weather data for L, 6, and A train areas to correlate with subway delays
 
 WHY WEATHER MATTERS:
 - Rain/snow can slow trains (slippery tracks, reduced visibility)
@@ -9,10 +9,10 @@ WHY WEATHER MATTERS:
 - Storms cause service disruptions
 
 HOW THIS WORKS:
-1. We call OpenWeatherMap API with NYC coordinates
+1. We call OpenWeatherMap API for each route's area (Brooklyn, Manhattan/Bronx, Queens)
 2. API returns current weather conditions
 3. We extract features useful for ML prediction
-4. Save data with timestamp
+4. Save data with timestamp for each location
 """
 
 import requests
@@ -26,14 +26,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from config import config
 
 
-def fetch_weather_data():
+def fetch_weather_data(route_key):
     """
-    Fetch current weather for NYC from OpenWeatherMap
+    Fetch current weather for a specific route's area from OpenWeatherMap
+
+    Args:
+        route_key: Route key ('L', '6', or 'A')
 
     Returns:
         dict: Raw weather data from API, or None if error
     """
-    print("[FETCH] Fetching weather data for NYC...")
+    route_config = config.MTA_FEEDS.get(route_key)
+    if not route_config:
+        print(f"[ERROR] Unknown route: {route_key}")
+        return None
+
+    print(f"[FETCH] Fetching weather data for {route_config['name']} area...")
 
     # Check if API key is set
     if not config.WEATHER_API_KEY or config.WEATHER_API_KEY == 'PASTE_YOUR_WEATHER_KEY_HERE':
@@ -41,10 +49,10 @@ def fetch_weather_data():
         print("   Get your key at: https://openweathermap.org/api")
         return None
 
-    # Set up the request parameters
+    # Set up the request parameters for this route's location
     params = {
-        'lat': config.NYC_LATITUDE,
-        'lon': config.NYC_LONGITUDE,
+        'lat': route_config['latitude'],
+        'lon': route_config['longitude'],
         'appid': config.WEATHER_API_KEY,
         'units': 'imperial'  # Use Fahrenheit for temperature
     }
@@ -62,6 +70,9 @@ def fetch_weather_data():
 
         # Parse JSON response
         weather_data = response.json()
+
+        # Add route identifier to the data
+        weather_data['route_id'] = route_key
 
         print(f"[SUCCESS] Successfully fetched weather data!")
         print(f"   Location: {weather_data.get('name', 'NYC')}")
@@ -98,6 +109,7 @@ def extract_weather_features(weather_data):
     # Extract features
     features = {
         'timestamp': datetime.now().isoformat(),
+        'route_id': weather_data.get('route_id', 'unknown'),
 
         # Temperature features
         'temperature': weather_data['main']['temp'],
@@ -177,12 +189,13 @@ def calculate_severity(weather_data):
     return severity
 
 
-def save_weather_data(data, data_type='weather'):
+def save_weather_data(data, route_id, data_type='weather'):
     """
     Save weather data to data/raw/ folder as JSON
 
     Args:
         data: Weather data to save
+        route_id: Route ID ('L', '6', 'A')
         data_type: Type identifier for filename
     """
     # Create data directory if it doesn't exist
@@ -192,7 +205,7 @@ def save_weather_data(data, data_type='weather'):
 
     # Create filename with timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"nyc_{data_type}_{timestamp}.json"
+    filename = f"{route_id}_train_{data_type}_{timestamp}.json"
     filepath = os.path.join(raw_path, filename)
 
     # Save as JSON
@@ -205,46 +218,58 @@ def save_weather_data(data, data_type='weather'):
 
 def collect_weather_data():
     """
-    Main function: Fetch, process, and save weather data
+    Main function: Fetch, process, and save weather data for all routes
 
     Returns:
-        dict: Processed weather features
+        dict: Summary of collected weather data
     """
-    print("=" * 50)
-    print("ATLAS - Weather Data Collection")
-    print("=" * 50)
+    print("=" * 60)
+    print("ATLAS - Weather Data Collection (L, 6, A Train Areas)")
+    print("=" * 60)
     print()
 
-    # Fetch raw weather data
-    raw_data = fetch_weather_data()
+    all_features = {}
 
-    if raw_data is None:
-        print("\n[ERROR] Weather data collection failed!")
-        return None
+    # Collect weather for each route's area
+    for route_key in config.SUPPORTED_ROUTES:
+        route_config = config.MTA_FEEDS[route_key]
+        print(f"\n[ROUTE] Collecting weather for {route_config['name']} area")
+        print("-" * 60)
+        print()
+
+        # Fetch raw weather data
+        raw_data = fetch_weather_data(route_key)
+
+        if raw_data is None:
+            print(f"[ERROR] Weather data collection failed for {route_config['name']}!")
+            continue
+
+        print()
+
+        # Extract ML-ready features
+        print("[PROCESS] Extracting weather features...")
+        features = extract_weather_features(raw_data)
+
+        if features:
+            print(f"   Temperature: {features['temperature']}F (feels like {features['feels_like']}F)")
+            print(f"   Conditions: {features['description']}")
+            print(f"   Severity: {features['severity']}/3")
+            print(f"   Raining: {features['is_raining']}")
+            print(f"   Snowing: {features['is_snowing']}")
+            all_features[route_key] = features
+
+        print()
+
+        # Save both raw and processed data
+        save_weather_data(raw_data, route_key, 'weather_raw')
+        save_weather_data(features, route_key, 'weather_features')
 
     print()
+    print("=" * 60)
+    print("[DONE] Weather data collection complete for all routes!")
+    print("=" * 60)
 
-    # Extract ML-ready features
-    print("[PROCESS] Extracting weather features...")
-    features = extract_weather_features(raw_data)
-
-    if features:
-        print(f"   Temperature: {features['temperature']}F (feels like {features['feels_like']}F)")
-        print(f"   Conditions: {features['description']}")
-        print(f"   Severity: {features['severity']}/3")
-        print(f"   Raining: {features['is_raining']}")
-        print(f"   Snowing: {features['is_snowing']}")
-
-    print()
-
-    # Save both raw and processed data
-    save_weather_data(raw_data, 'weather_raw')
-    save_weather_data(features, 'weather_features')
-
-    print()
-    print("[DONE] Weather data collection complete!")
-
-    return features
+    return all_features
 
 
 # This runs when you execute this file directly

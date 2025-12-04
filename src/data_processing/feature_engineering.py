@@ -21,9 +21,15 @@ FEATURES WE'LL CREATE:
    - Is delayed? (yes/no)
    - Delay category (on-time, minor, major)
 
+4. Route-based:
+   - Route ID (L, 6, A trains)
+   - Station information
+
 WHAT IS FEATURE ENGINEERING?
 Taking raw data and creating meaningful variables that help the model learn patterns.
 Example: Instead of just "8:30am", we create "is_rush_hour = True"
+
+Now supports multiple routes: L, 6, and A trains!
 """
 
 import pandas as pd
@@ -112,7 +118,7 @@ def categorize_delay(delay_seconds):
 
 def load_delay_data(data_dir=None):
     """
-    Load all delay JSON files from data/raw/
+    Load all delay JSON files from data/raw/ for all routes (L, 6, A)
 
     Args:
         data_dir: Directory containing JSON files
@@ -124,15 +130,15 @@ def load_delay_data(data_dir=None):
         data_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'raw')
         data_dir = os.path.abspath(data_dir)
 
-    # Find all delay files
-    pattern = os.path.join(data_dir, 'l_train_delays_*.json')
+    # Find all delay files for all routes (pattern: *_train_delays_*.json)
+    pattern = os.path.join(data_dir, '*_train_delays_*.json')
     files = glob.glob(pattern)
 
     if not files:
         print(f"[WARNING] No delay files found in {data_dir}")
         return pd.DataFrame()
 
-    print(f"[LOAD] Found {len(files)} delay file(s)")
+    print(f"[LOAD] Found {len(files)} delay file(s) across all routes")
 
     # Load and combine all files
     all_data = []
@@ -147,7 +153,7 @@ def load_delay_data(data_dir=None):
 
 def load_weather_data(data_dir=None):
     """
-    Load all weather feature JSON files from data/raw/
+    Load all weather feature JSON files from data/raw/ for all routes (L, 6, A)
 
     Args:
         data_dir: Directory containing JSON files
@@ -159,15 +165,15 @@ def load_weather_data(data_dir=None):
         data_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'raw')
         data_dir = os.path.abspath(data_dir)
 
-    # Find all weather feature files
-    pattern = os.path.join(data_dir, 'nyc_weather_features_*.json')
+    # Find all weather feature files for all routes (pattern: *_train_weather_features_*.json)
+    pattern = os.path.join(data_dir, '*_train_weather_features_*.json')
     files = glob.glob(pattern)
 
     if not files:
         print(f"[WARNING] No weather files found in {data_dir}")
         return pd.DataFrame()
 
-    print(f"[LOAD] Found {len(files)} weather file(s)")
+    print(f"[LOAD] Found {len(files)} weather file(s) across all routes")
 
     # Load and combine all files
     all_data = []
@@ -220,26 +226,32 @@ def engineer_features(delay_df, weather_df):
         # Get the most recent weather data
         latest_weather = weather_df.iloc[-1]
 
-        # Add weather columns to each row
-        df['temperature'] = latest_weather.get('temperature', None)
-        df['humidity'] = latest_weather.get('humidity', None)
-        df['wind_speed'] = latest_weather.get('wind_speed', None)
+        # Add weather columns to each row with defaults for missing values
+        df['temperature'] = latest_weather.get('temperature', 50.0)  # Default ~50F
+        df['humidity'] = latest_weather.get('humidity', 50.0)  # Default 50%
+        df['wind_speed'] = latest_weather.get('wind_speed', 5.0)  # Default 5mph
         df['is_raining'] = latest_weather.get('is_raining', False)
         df['is_snowing'] = latest_weather.get('is_snowing', False)
         df['weather_severity'] = latest_weather.get('severity', 0)
     else:
-        # No weather data - fill with defaults
-        df['temperature'] = None
-        df['humidity'] = None
-        df['wind_speed'] = None
+        # No weather data - fill with reasonable defaults
+        df['temperature'] = 50.0  # Moderate temperature
+        df['humidity'] = 50.0  # Moderate humidity
+        df['wind_speed'] = 5.0  # Light wind
         df['is_raining'] = False
         df['is_snowing'] = False
         df['weather_severity'] = 0
 
     # 4. Extract station info from stop_id
     print("[FEATURE] Extracting station info...")
-    df['station_number'] = df['stop_id'].str.extract(r'L(\d+)')[0].astype(int)
-    df['direction'] = df['stop_id'].str.extract(r'L\d+([NS])')[0]
+    # Extract station number (works for L, 6, A trains: L01, 601, A01, etc.)
+    df['station_number'] = df['stop_id'].str.extract(r'(\d+)')[0]
+    # Fill any NaN values with 0 and convert to int
+    df['station_number'] = pd.to_numeric(df['station_number'], errors='coerce').fillna(0).astype(int)
+
+    # Extract direction (N=North/Uptown, S=South/Downtown)
+    df['direction'] = df['stop_id'].str.extract(r'([NS])')[0]
+    df['direction'] = df['direction'].fillna('N')  # Default to N if missing
     df['is_northbound'] = df['direction'] == 'N'
 
     # 5. Create the target variable for ML
@@ -247,6 +259,23 @@ def engineer_features(delay_df, weather_df):
     # This is what we're trying to predict!
     if 'arrival_delay_seconds' in df.columns:
         df['target_is_delayed'] = df['arrival_delay_seconds'] > 60
+
+    # 6. Final cleanup - fill any remaining NaN values
+    print("[CLEANUP] Filling any remaining NaN values...")
+    # For numeric columns, fill with 0
+    numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+    df[numeric_columns] = df[numeric_columns].fillna(0)
+
+    # For boolean columns, fill with False
+    bool_columns = df.select_dtypes(include=['bool']).columns
+    df[bool_columns] = df[bool_columns].fillna(False)
+
+    # Check for any remaining NaN values
+    nan_count = df.isna().sum().sum()
+    if nan_count > 0:
+        print(f"[WARNING] Still have {nan_count} NaN values after cleanup")
+    else:
+        print(f"[SUCCESS] No NaN values remaining!")
 
     print(f"[DONE] Created {len(df.columns)} features")
 

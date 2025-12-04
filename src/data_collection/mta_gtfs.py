@@ -1,12 +1,12 @@
 """
 MTA GTFS-Realtime Data Collection
-Fetches live L train data from the MTA API
+Fetches live subway data from the MTA API for L, 6, and A trains
 
 HOW THIS WORKS:
 1. We make an HTTP request to MTA's API with our API key
 2. MTA returns data in "Protocol Buffer" format (a compressed binary format)
 3. We use gtfs-realtime-bindings to decode it into Python objects
-4. We extract delay information and save it
+4. We extract delay information and save it for each route
 """
 
 import requests
@@ -21,14 +21,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from config import config
 
 
-def fetch_mta_data():
+def fetch_mta_data(route_key):
     """
-    Fetch real-time GTFS data from MTA API for L train
+    Fetch real-time GTFS data from MTA API for a specific route
+
+    Args:
+        route_key: Route key ('L', '6', or 'A')
 
     Returns:
         gtfs_realtime_pb2.FeedMessage: Parsed GTFS feed, or None if error
     """
-    print("[FETCH] Fetching MTA GTFS data for L train...")
+    route_config = config.MTA_FEEDS.get(route_key)
+    if not route_config:
+        print(f"[ERROR] Unknown route: {route_key}")
+        return None
+
+    print(f"[FETCH] Fetching MTA GTFS data for {route_config['name']}...")
 
     # Set up the request (API key optional - MTA made feeds public)
     headers = {}
@@ -37,7 +45,7 @@ def fetch_mta_data():
 
     try:
         # Make the HTTP request to MTA
-        response = requests.get(config.MTA_GTFS_FEED_URL, headers=headers)
+        response = requests.get(route_config['feed_url'], headers=headers)
 
         # Check if request was successful
         if response.status_code != 200:
@@ -66,12 +74,13 @@ def fetch_mta_data():
         return None
 
 
-def parse_trip_updates(feed):
+def parse_trip_updates(feed, route_id):
     """
-    Extract delay information from the GTFS feed
+    Extract delay information from the GTFS feed for a specific route
 
     Args:
         feed: GTFS-realtime FeedMessage
+        route_id: Route ID to filter for ('L', '6', 'A')
 
     Returns:
         list: List of dictionaries with delay information
@@ -88,17 +97,17 @@ def parse_trip_updates(feed):
 
             # Get trip info
             trip_id = trip.trip.trip_id
-            route_id = trip.trip.route_id
+            entity_route_id = trip.trip.route_id
 
-            # Only process L train
-            if route_id != 'L':
+            # Only process the specified route
+            if entity_route_id != route_id:
                 continue
 
             # Go through each stop time update
             for stop_update in trip.stop_time_update:
                 delay_data = {
                     'trip_id': trip_id,
-                    'route_id': route_id,
+                    'route_id': entity_route_id,
                     'stop_id': stop_update.stop_id,
                     'timestamp': datetime.now().isoformat(),
                 }
@@ -118,12 +127,13 @@ def parse_trip_updates(feed):
     return delays
 
 
-def parse_vehicle_positions(feed):
+def parse_vehicle_positions(feed, route_id):
     """
-    Extract current train positions from the feed
+    Extract current train positions from the feed for a specific route
 
     Args:
         feed: GTFS-realtime FeedMessage
+        route_id: Route ID to filter for ('L', '6', 'A')
 
     Returns:
         list: List of dictionaries with vehicle positions
@@ -137,8 +147,8 @@ def parse_vehicle_positions(feed):
         if entity.HasField('vehicle'):
             vehicle = entity.vehicle
 
-            # Only process L train
-            if vehicle.trip.route_id != 'L':
+            # Only process the specified route
+            if vehicle.trip.route_id != route_id:
                 continue
 
             position_data = {
@@ -154,12 +164,13 @@ def parse_vehicle_positions(feed):
     return positions
 
 
-def parse_alerts(feed):
+def parse_alerts(feed, route_id):
     """
-    Extract service alerts from the feed
+    Extract service alerts from the feed for a specific route
 
     Args:
         feed: GTFS-realtime FeedMessage
+        route_id: Route ID to filter for ('L', '6', 'A')
 
     Returns:
         list: List of alert dictionaries
@@ -173,18 +184,19 @@ def parse_alerts(feed):
         if entity.HasField('alert'):
             alert = entity.alert
 
-            # Check if alert affects L train
-            affects_l = False
+            # Check if alert affects this route
+            affects_route = False
             for informed in alert.informed_entity:
-                if informed.route_id == 'L':
-                    affects_l = True
+                if informed.route_id == route_id:
+                    affects_route = True
                     break
 
-            if not affects_l:
+            if not affects_route:
                 continue
 
             alert_data = {
                 'alert_id': entity.id,
+                'route_id': route_id,
                 'header': alert.header_text.translation[0].text if alert.header_text.translation else '',
                 'description': alert.description_text.translation[0].text if alert.description_text.translation else '',
                 'timestamp': datetime.now().isoformat(),
@@ -195,12 +207,13 @@ def parse_alerts(feed):
     return alerts
 
 
-def save_raw_data(data, data_type='delays'):
+def save_raw_data(data, route_id, data_type='delays'):
     """
     Save raw data to data/raw/ folder as JSON
 
     Args:
         data: Data to save (list of dictionaries)
+        route_id: Route ID ('L', '6', 'A')
         data_type: Type of data ('delays', 'positions', 'alerts')
     """
     # Create data directory if it doesn't exist
@@ -211,7 +224,7 @@ def save_raw_data(data, data_type='delays'):
 
     # Create filename with timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"l_train_{data_type}_{timestamp}.json"
+    filename = f"{route_id}_train_{data_type}_{timestamp}.json"
     filepath = os.path.join(raw_path, filename)
 
     # Save as JSON
@@ -224,56 +237,75 @@ def save_raw_data(data, data_type='delays'):
 
 def collect_all_data():
     """
-    Main function: Fetch and save all MTA data
+    Main function: Fetch and save all MTA data for all routes
 
     Returns:
         dict: Summary of collected data
     """
-    print("=" * 50)
-    print("ATLAS - MTA Data Collection")
-    print("=" * 50)
+    print("=" * 60)
+    print("ATLAS - MTA Data Collection (L, 6, A Trains)")
+    print("=" * 60)
     print()
 
-    # Fetch the feed
-    feed = fetch_mta_data()
-
-    if feed is None:
-        print("\n[ERROR] Data collection failed!")
-        return None
-
-    print()
-
-    # Parse different data types
-    print("[PARSE] Parsing trip updates (delays)...")
-    delays = parse_trip_updates(feed)
-    print(f"   Found {len(delays)} delay records")
-
-    print("[PARSE] Parsing vehicle positions...")
-    positions = parse_vehicle_positions(feed)
-    print(f"   Found {len(positions)} vehicle positions")
-
-    print("[PARSE] Parsing service alerts...")
-    alerts = parse_alerts(feed)
-    print(f"   Found {len(alerts)} alerts")
-
-    print()
-
-    # Save the data
-    if delays:
-        save_raw_data(delays, 'delays')
-    if positions:
-        save_raw_data(positions, 'positions')
-    if alerts:
-        save_raw_data(alerts, 'alerts')
-
-    print()
-    print("[DONE] Data collection complete!")
-
-    return {
-        'delays': len(delays),
-        'positions': len(positions),
-        'alerts': len(alerts)
+    total_summary = {
+        'L': {'delays': 0, 'positions': 0, 'alerts': 0},
+        '6': {'delays': 0, 'positions': 0, 'alerts': 0},
+        'A': {'delays': 0, 'positions': 0, 'alerts': 0}
     }
+
+    # Collect data for each route
+    for route_key in config.SUPPORTED_ROUTES:
+        route_config = config.MTA_FEEDS[route_key]
+        print(f"\n[ROUTE] Collecting data for {route_config['name']}")
+        print("-" * 60)
+        print()
+
+        # Fetch the feed
+        feed = fetch_mta_data(route_key)
+
+        if feed is None:
+            print(f"[ERROR] Data collection failed for {route_config['name']}!")
+            continue
+
+        print()
+
+        # Parse different data types
+        print("[PARSE] Parsing trip updates (delays)...")
+        delays = parse_trip_updates(feed, route_key)
+        print(f"   Found {len(delays)} delay records")
+        total_summary[route_key]['delays'] = len(delays)
+
+        print("[PARSE] Parsing vehicle positions...")
+        positions = parse_vehicle_positions(feed, route_key)
+        print(f"   Found {len(positions)} vehicle positions")
+        total_summary[route_key]['positions'] = len(positions)
+
+        print("[PARSE] Parsing service alerts...")
+        alerts = parse_alerts(feed, route_key)
+        print(f"   Found {len(alerts)} alerts")
+        total_summary[route_key]['alerts'] = len(alerts)
+
+        print()
+
+        # Save the data
+        if delays:
+            save_raw_data(delays, route_key, 'delays')
+        if positions:
+            save_raw_data(positions, route_key, 'positions')
+        if alerts:
+            save_raw_data(alerts, route_key, 'alerts')
+
+    print()
+    print("=" * 60)
+    print("[DONE] Data collection complete for all routes!")
+    print("=" * 60)
+    print("\nSummary:")
+    for route_key in config.SUPPORTED_ROUTES:
+        route_name = config.MTA_FEEDS[route_key]['name']
+        stats = total_summary[route_key]
+        print(f"  {route_name}: {stats['delays']} delays, {stats['positions']} positions, {stats['alerts']} alerts")
+
+    return total_summary
 
 
 # This runs when you execute this file directly
