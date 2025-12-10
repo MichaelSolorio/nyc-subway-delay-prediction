@@ -51,11 +51,19 @@ The goal was to learn how to build a full ML pipeline from scratch - from data c
    ```
    pip install -r requirements.txt
    ```
-4. Create a `.env` file with your API keys:
+4. Create a `.env` file in the project root with your API keys:
+   ```bash
+   # Weather API Key (OpenWeatherMap)
+   # Get your free key at: https://openweathermap.org/api
+   WEATHER_API_KEY=your_openweathermap_api_key_here
+
+   # MTA API Key (optional - MTA feeds are now public)
+   MTA_API_KEY=
+
+   # Debug Mode
+   DEBUG=True
    ```
-   WEATHER_API_KEY=your_key_here
-   ```
-   Note: MTA data doesn't require an API key anymore.
+   **Important**: The `.env` file is already in `.gitignore` and will NOT be committed to git.
 
 ## Running the project
 

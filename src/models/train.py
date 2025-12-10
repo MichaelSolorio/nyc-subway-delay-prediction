@@ -36,14 +36,32 @@ from config import config
 # Features we'll use for prediction
 # These are the columns that the model will learn from
 FEATURE_COLUMNS = [
-    # Time features
+    # Basic time features
     'hour',
     'day_of_week',
+    'day_of_month',
+    'month',
+    'week_of_year',
+
+    # Time of day features
     'is_weekend',
     'is_rush_hour',
     'is_morning',
     'is_evening',
     'is_night',
+
+    # Holiday & calendar features (NEW)
+    'is_holiday',
+    'is_holiday_eve',
+    'is_school_day',
+    'is_summer_break',
+    'is_winter_break',
+
+    # Season features (NEW)
+    'is_winter',
+    'is_spring',
+    'is_summer',
+    'is_fall',
 
     # Weather features
     'temperature',
@@ -60,6 +78,68 @@ FEATURE_COLUMNS = [
 
 # What we're predicting
 TARGET_COLUMN = 'target_is_delayed'
+
+
+def balance_classes(X, y, target_ratio=0.35):
+    """
+    Balance classes using smart undersampling
+
+    Keeps ALL delayed samples (minority class) and randomly samples
+    on-time trains to achieve target ratio of delayed samples.
+
+    Args:
+        X: Features DataFrame
+        y: Target Series
+        target_ratio: Desired ratio of delayed samples (default 35%)
+
+    Returns:
+        tuple: Balanced (X, y)
+    """
+    print("[BALANCE] Balancing classes with smart undersampling...")
+
+    # Separate delayed and on-time samples
+    delayed_mask = y == True
+    ontime_mask = y == False
+
+    X_delayed = X[delayed_mask]
+    y_delayed = y[delayed_mask]
+    X_ontime = X[ontime_mask]
+    y_ontime = y[ontime_mask]
+
+    n_delayed = len(X_delayed)
+    n_ontime = len(X_ontime)
+
+    print(f"   Original: {n_delayed} delayed, {n_ontime} on-time")
+    print(f"   Original ratio: {n_delayed/(n_delayed+n_ontime)*100:.1f}% delayed")
+
+    # Calculate how many on-time samples we need for target ratio
+    # target_ratio = n_delayed / (n_delayed + n_ontime_sampled)
+    # Solving: n_ontime_sampled = n_delayed * (1 - target_ratio) / target_ratio
+    n_ontime_target = int(n_delayed * (1 - target_ratio) / target_ratio)
+
+    # Don't sample more than we have
+    n_ontime_sample = min(n_ontime_target, n_ontime)
+
+    # Randomly sample on-time trains
+    np.random.seed(42)  # For reproducibility
+    ontime_indices = np.random.choice(X_ontime.index, size=n_ontime_sample, replace=False)
+
+    X_ontime_sampled = X_ontime.loc[ontime_indices]
+    y_ontime_sampled = y_ontime.loc[ontime_indices]
+
+    # Combine
+    X_balanced = pd.concat([X_delayed, X_ontime_sampled])
+    y_balanced = pd.concat([y_delayed, y_ontime_sampled])
+
+    # Shuffle
+    shuffle_idx = np.random.permutation(len(X_balanced))
+    X_balanced = X_balanced.iloc[shuffle_idx].reset_index(drop=True)
+    y_balanced = y_balanced.iloc[shuffle_idx].reset_index(drop=True)
+
+    print(f"   Balanced: {len(y_balanced[y_balanced==True])} delayed, {len(y_balanced[y_balanced==False])} on-time")
+    print(f"   New ratio: {y_balanced.mean()*100:.1f}% delayed")
+
+    return X_balanced, y_balanced
 
 
 def load_training_data():
@@ -116,6 +196,9 @@ def load_training_data():
 
     print(f"[LOAD] Features shape: {X.shape}")
     print(f"[LOAD] Target distribution: {y.value_counts().to_dict()}")
+
+    # Balance classes using smart undersampling
+    X, y = balance_classes(X, y, target_ratio=0.35)
 
     return X, y
 

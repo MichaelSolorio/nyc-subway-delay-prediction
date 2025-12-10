@@ -71,7 +71,7 @@ def get_predictions():
     # }
 
     try:
-        print("🔮 API: Generating predictions...")
+        print("API: Generating predictions...")
         # predictions = predict_current_status()
         # return jsonify(predictions)
 
@@ -101,7 +101,7 @@ def get_station_prediction(station_id):
         JSON: Predictions for that station
     """
     # TODO: Implement station-specific predictions
-    print(f"🔮 API: Getting prediction for station {station_id}")
+    print(f"API: Getting prediction for station {station_id}")
     return jsonify({
         'success': True,
         'station_id': station_id,
@@ -138,8 +138,8 @@ def run_api():
     Start the Flask API server
     """
     print("=" * 50)
-    print("🚀 Starting ATLAS API")
-    print(f"📍 Running on http://{config.FLASK_HOST}:{config.FLASK_PORT}")
+    print(" Starting ATLAS API")
+    print(f"Running on http://{config.FLASK_HOST}:{config.FLASK_PORT}")
     print("=" * 50)
     print()
 

@@ -34,7 +34,7 @@ Now supports multiple routes: L, 6, and A trains!
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
 import json
 import os
 import sys
@@ -45,6 +45,159 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from config import config
 
 
+# =============================================================================
+# US FEDERAL HOLIDAYS (No API needed - hardcoded for accuracy)
+# =============================================================================
+
+def get_us_holidays(year):
+    """
+    Get US federal holidays for a given year.
+    These are days when ridership patterns change significantly.
+
+    Returns:
+        set: Set of date objects for holidays
+    """
+    holidays = set()
+
+    # Fixed-date holidays
+    holidays.add(date(year, 1, 1))    # New Year's Day
+    holidays.add(date(year, 7, 4))    # Independence Day
+    holidays.add(date(year, 11, 11))  # Veterans Day
+    holidays.add(date(year, 12, 25))  # Christmas Day
+
+    # MLK Day: 3rd Monday of January
+    holidays.add(get_nth_weekday(year, 1, 0, 3))  # Monday=0
+
+    # Presidents Day: 3rd Monday of February
+    holidays.add(get_nth_weekday(year, 2, 0, 3))
+
+    # Memorial Day: Last Monday of May
+    holidays.add(get_last_weekday(year, 5, 0))
+
+    # Labor Day: 1st Monday of September
+    holidays.add(get_nth_weekday(year, 9, 0, 1))
+
+    # Columbus Day: 2nd Monday of October
+    holidays.add(get_nth_weekday(year, 10, 0, 2))
+
+    # Thanksgiving: 4th Thursday of November
+    holidays.add(get_nth_weekday(year, 11, 3, 4))  # Thursday=3
+
+    # Day after Thanksgiving (Black Friday) - major travel day
+    thanksgiving = get_nth_weekday(year, 11, 3, 4)
+    holidays.add(date(year, 11, thanksgiving.day + 1))
+
+    return holidays
+
+
+def get_nth_weekday(year, month, weekday, n):
+    """Get the nth occurrence of a weekday in a month"""
+    first_day = date(year, month, 1)
+    first_weekday = first_day.weekday()
+
+    # Days until first occurrence of target weekday
+    days_until = (weekday - first_weekday) % 7
+    first_occurrence = 1 + days_until
+
+    # Add weeks to get to nth occurrence
+    target_day = first_occurrence + (n - 1) * 7
+
+    return date(year, month, target_day)
+
+
+def get_last_weekday(year, month, weekday):
+    """Get the last occurrence of a weekday in a month"""
+    # Start from last day of month
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+
+    last_day = next_month - pd.Timedelta(days=1)
+    last_day = date(year, month, last_day.day)
+
+    # Go back to find the weekday
+    days_back = (last_day.weekday() - weekday) % 7
+    return date(year, month, last_day.day - days_back)
+
+
+def is_holiday(dt):
+    """Check if a date is a US federal holiday"""
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt)
+
+    d = date(dt.year, dt.month, dt.day)
+    holidays = get_us_holidays(dt.year)
+
+    return d in holidays
+
+
+def is_holiday_eve(dt):
+    """Check if it's the day before a major holiday (heavy travel)"""
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt)
+
+    tomorrow = date(dt.year, dt.month, dt.day) + pd.Timedelta(days=1)
+
+    # Handle year boundary
+    if tomorrow.month == 1 and tomorrow.day == 1:
+        holidays = get_us_holidays(tomorrow.year)
+    else:
+        holidays = get_us_holidays(dt.year)
+
+    return tomorrow in holidays
+
+
+def get_nyc_school_status(dt):
+    """
+    Determine if NYC public schools are likely in session.
+    School schedule affects ridership significantly.
+
+    Returns:
+        dict: School-related features
+    """
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt)
+
+    month = dt.month
+    day = dt.day
+
+    # Summer break: roughly late June through early September
+    is_summer_break = (month == 7) or (month == 8) or \
+                      (month == 6 and day >= 25) or \
+                      (month == 9 and day <= 7)
+
+    # Winter break: roughly Dec 24 - Jan 2
+    is_winter_break = (month == 12 and day >= 24) or \
+                      (month == 1 and day <= 2)
+
+    # Spring break: typically 3rd week of April
+    is_spring_break = (month == 4 and 15 <= day <= 23)
+
+    # School likely in session if not on break and not weekend
+    is_school_day = not (is_summer_break or is_winter_break or is_spring_break) \
+                    and dt.weekday() < 5  # Monday-Friday
+
+    return {
+        'is_summer_break': is_summer_break,
+        'is_winter_break': is_winter_break,
+        'is_spring_break': is_spring_break,
+        'is_school_day': is_school_day,
+    }
+
+
+def get_season(month):
+    """Get season from month (affects ridership and delays)"""
+    if month in [12, 1, 2]:
+        return 'winter'
+    elif month in [3, 4, 5]:
+        return 'spring'
+    elif month in [6, 7, 8]:
+        return 'summer'
+    else:
+        return 'fall'
+
+
 def create_time_features(timestamp):
     """
     Create time-based features from a timestamp
@@ -53,7 +206,7 @@ def create_time_features(timestamp):
         timestamp: datetime object or ISO string
 
     Returns:
-        dict: Time-based features
+        dict: Time-based features including holidays, seasonality, school schedule
     """
     # Convert string to datetime if needed
     if isinstance(timestamp, str):
@@ -61,16 +214,45 @@ def create_time_features(timestamp):
 
     hour = timestamp.hour
     day_of_week = timestamp.weekday()  # 0=Monday, 6=Sunday
+    month = timestamp.month
+    day_of_month = timestamp.day
+
+    # Get school status
+    school_status = get_nyc_school_status(timestamp)
+
+    # Get season
+    season = get_season(month)
 
     return {
+        # Basic time features
         'hour': hour,
         'day_of_week': day_of_week,
+        'day_of_month': day_of_month,
+        'month': month,
+        'week_of_year': timestamp.isocalendar()[1],
+
+        # Time of day features
         'is_weekend': day_of_week >= 5,  # Saturday or Sunday
         'is_rush_hour': (7 <= hour <= 9) or (17 <= hour <= 19),  # 7-9am or 5-7pm
         'is_morning': 5 <= hour < 12,
         'is_afternoon': 12 <= hour < 17,
         'is_evening': 17 <= hour < 21,
         'is_night': hour >= 21 or hour < 5,
+
+        # Holiday features
+        'is_holiday': is_holiday(timestamp),
+        'is_holiday_eve': is_holiday_eve(timestamp),
+
+        # School schedule features
+        'is_school_day': school_status['is_school_day'],
+        'is_summer_break': school_status['is_summer_break'],
+        'is_winter_break': school_status['is_winter_break'],
+
+        # Season features (one-hot encoded)
+        'is_winter': season == 'winter',
+        'is_spring': season == 'spring',
+        'is_summer': season == 'summer',
+        'is_fall': season == 'fall',
     }
 
 
@@ -86,12 +268,16 @@ def create_delay_features(delay_seconds):
     """
     delay_minutes = delay_seconds / 60
 
+    # Using 180 seconds (3 minutes) as threshold - this is when passengers
+    # actually notice and care about delays. Also helps with class imbalance.
+    DELAY_THRESHOLD = 180  # 3 minutes
+
     return {
         'delay_seconds': delay_seconds,
         'delay_minutes': delay_minutes,
-        'is_delayed': delay_seconds > 60,  # More than 1 minute late = delayed
-        'is_early': delay_seconds < -60,   # More than 1 minute early
-        'is_on_time': -60 <= delay_seconds <= 60,  # Within 1 minute
+        'is_delayed': delay_seconds > DELAY_THRESHOLD,  # More than 3 minutes late = delayed
+        'is_early': delay_seconds < -DELAY_THRESHOLD,   # More than 3 minutes early
+        'is_on_time': -DELAY_THRESHOLD <= delay_seconds <= DELAY_THRESHOLD,  # Within 3 minutes
         'delay_category': categorize_delay(delay_seconds),
     }
 
@@ -106,13 +292,13 @@ def categorize_delay(delay_seconds):
     Returns:
         str: Category ('early', 'on_time', 'minor_delay', 'major_delay')
     """
-    if delay_seconds < -60:
+    if delay_seconds < -180:  # More than 3 min early
         return 'early'
-    elif delay_seconds <= 60:
+    elif delay_seconds <= 180:  # Within 3 minutes
         return 'on_time'
-    elif delay_seconds <= 300:  # Up to 5 minutes
+    elif delay_seconds <= 420:  # 3-7 minutes late
         return 'minor_delay'
-    else:
+    else:  # More than 7 minutes late
         return 'major_delay'
 
 
@@ -258,7 +444,7 @@ def engineer_features(delay_df, weather_df):
     # Binary classification: is_delayed (True/False)
     # This is what we're trying to predict!
     if 'arrival_delay_seconds' in df.columns:
-        df['target_is_delayed'] = df['arrival_delay_seconds'] > 60
+        df['target_is_delayed'] = df['arrival_delay_seconds'] > 180  # 3 minute threshold
 
     # 6. Final cleanup - fill any remaining NaN values
     print("[CLEANUP] Filling any remaining NaN values...")
